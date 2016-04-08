@@ -1,6 +1,7 @@
 import sys
 import os
 from collections import Counter
+import cPickle as pickle
 import numpy as np
 
 UNK_TOKEN = '<unk>'
@@ -18,8 +19,7 @@ class TextReader(object):
 
     def get_filenames(self):
         if not os.path.exists(self.data_dir):
-            print 'Data directory does not exist.'
-            sys.exit(-1)
+            sys.exit('Data directory does not exist.')
         data_files = []
         for f in os.listdir(self.data_dir):
             f = os.path.join(self.data_dir, f)
@@ -50,9 +50,32 @@ class TextReader(object):
                 outfile.write(w + '\t' + str(idx) + '\n')
         return
 
+    def generate_index_file(self):
+        self.text_idx_data = []
+        for f in self.data_files:
+            file_idx_data = []
+            with open(f, 'r') as infile:
+                for line in infile:
+                    toks = line.strip().split()
+                    tok_idx = [self.word2idx[t] if t in self.word2idx else 0 for t in toks]
+                    file_idx_data.append(tok_idx)
+            self.text_idx_data.append(file_idx_data)
+        dump_file = os.path.join(self.data_dir, 'idx.cPickle')
+        with open(dump_file, 'w') as outfile:
+            pickle.dump(self.text_idx_data, file=outfile)
+        return
+
+    def prepare_data(self, vocab_size=10000):
+        self.prepare_dict(vocab_size)
+        self.generate_index_file()
+        return self.text_idx_data
+
 def main():
     reader = TextReader('./data/mr/', suffix_list=['neg', 'pos'])
-    reader.prepare_dict(vocab_size=1000)
+    text_idx_data = reader.prepare_data()
+    print len(text_idx_data)
+    print len(text_idx_data[0])
+    print text_idx_data[0][0]
 
 if __name__ == '__main__':
     main()
