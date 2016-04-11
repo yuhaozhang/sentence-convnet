@@ -76,11 +76,14 @@ class TextReader(object):
 
     def shuffle_and_split(self, sentences_and_labels, test_fraction=0.2):
         random.shuffle(sentences_and_labels)
-        test_num = int(len(sentences_and_labels) * test_fraction)
+        self.num_examples = len(sentences_and_labels)
+        test_num = int(self.num_examples * test_fraction)
         self.test_data = sentences_and_labels[:test_num]
         self.train_data = sentences_and_labels[test_num:]
         dump_data(self.data_dir, 'train.cPickle', self.train_data)
         dump_data(self.data_dir, 'test.cPickle', self.test_data)
+        print 'Split dataset into training and test set: %d for training, %d for test.' % \
+            (self.num_examples - test_num, test_num)
         return
 
     def prepare_data(self, vocab_size=10000, test_fraction=0.2):
@@ -114,6 +117,9 @@ class DataLoader(object):
         return (self.x[self.cur_idx-self.batch_size:self.cur_idx], 
             self.y[self.cur_idx-self.batch_size:self.cur_idx])
 
+    def batches_per_epoch(self):
+        return int(np.ceil(self.num_examples / self.batch_size))
+
 
 def dump_data(data_dir, filename, data):
     dump_file = os.path.join(data_dir, filename)
@@ -121,6 +127,11 @@ def dump_data(data_dir, filename, data):
         pickle.dump(data, file=outfile)
     return
 
+def load_data_from_dump(data_dir, filename):
+    dump_file = os.path.join(data_dir, filename)
+    with open(dump_file, 'r') as infile:
+        data = pickle.load(infile)
+    return zip(*data)
 
 def main():
     reader = TextReader('./data/mr/', suffix_list=['neg', 'pos'])
