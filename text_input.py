@@ -45,15 +45,19 @@ class TextReader(object):
                         max_sent_len = len(toks)
                     for t in toks:
                         c[t] += 1
-        assert len(c) >= vocab_size
+        total_words = len(c)
+        assert total_words >= vocab_size
         word_list = [p[0] for p in c.most_common(vocab_size - 2)]
         word_list.insert(0, PAD_TOKEN)
         word_list.insert(0, UNK_TOKEN)
         self.word2idx = dict()
-        with open(os.path.join(self.data_dir, 'vocab'), 'w') as outfile:
+        vocab_file = os.path.join(self.data_dir, 'vocab')
+        with open(vocab_file, 'w') as outfile:
             for idx, w in enumerate(word_list):
                 self.word2idx[w] = idx
                 outfile.write(w + '\t' + str(idx) + '\n')
+        print '%d words found in training set. Truncate to vocabulary size %d.' % (total_words, vocab_size)
+        print 'Dictionary saved to file %s. Max sentence length in data is %d.' % (vocab_file, max_sent_len)
         return max_sent_len
 
     def generate_index_data(self, max_sent_len=100):
@@ -82,7 +86,7 @@ class TextReader(object):
         self.train_data = sentences_and_labels[test_num:]
         dump_data(self.data_dir, 'train.cPickle', self.train_data)
         dump_data(self.data_dir, 'test.cPickle', self.test_data)
-        print 'Split dataset into training and test set: %d for training, %d for test.' % \
+        print 'Split dataset into training and test set: %d for training, %d for testing.' % \
             (self.num_examples - test_num, test_num)
         return
 
@@ -107,6 +111,7 @@ class DataLoader(object):
         self.batch_size = batch_size
         self.cur_idx = 0
         self.num_examples = len(x)
+        print 'Loaded data with %d examples. %d examples per batch will be used.' % (self.num_examples, self.batch_size)
 
     def next_batch(self):
         if self.batch_size + self.cur_idx >= self.num_examples:
@@ -132,6 +137,7 @@ def load_data_from_dump(data_dir, filename):
     with open(dump_file, 'r') as infile:
         data = pickle.load(infile)
     return zip(*data)
+
 
 def main():
     reader = TextReader('./data/mr/', suffix_list=['neg', 'pos'])

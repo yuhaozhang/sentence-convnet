@@ -3,11 +3,11 @@ import tensorflow as tf
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_integer('batch_size', 100, 'Training batch size')
-tf.app.flags.DEFINE_integer('emb_size', 100, 'Size of word embeddings')
-tf.app.flags.DEFINE_integer('num_kernel', 50, 'Number of filters for each window size')
+tf.app.flags.DEFINE_integer('emb_size', 300, 'Size of word embeddings')
+tf.app.flags.DEFINE_integer('num_kernel', 100, 'Number of filters for each window size')
 tf.app.flags.DEFINE_integer('min_window', 3, 'Minimum size of filter window')
 tf.app.flags.DEFINE_integer('max_window', 5, 'Maximum size of filter window')
-tf.app.flags.DEFINE_integer('vocab_size', 15000, 'Vocabulary size')
+tf.app.flags.DEFINE_integer('vocab_size', 18000, 'Vocabulary size')
 
 NUM_CLASSES = 2
 SENT_LENGTH = 59
@@ -16,6 +16,11 @@ def _variable_on_cpu(name, shape, initializer):
     with tf.device('/cpu:0'):
         var = tf.get_variable(name, shape, initializer=initializer)
     return var
+
+def _activation_summary(x, name):
+    tf.histogram_summary(name + '/activations', x)
+    tf.scalar_summary(name + '/sparsity', tf.nn.zero_fraction(x))
+    return
 
 def inference(sentences, keep_prob):
     """ Build the inference graph. 
@@ -38,7 +43,7 @@ def inference(sentences, keep_prob):
             conv = tf.nn.conv2d(input=sent_batch, filter=kernel, strides=[1,1,1,1], padding='VALID')
             biases = _variable_on_cpu('biases'+str(k_size), [FLAGS.num_kernel], tf.constant_initializer(0.0))
             bias = tf.nn.bias_add(conv, biases)
-            relu = tf.nn.relu(bias, name='relu')
+            relu = tf.nn.relu(bias, name=scope.name)
             # shape of relu: [batch_size, conv_len, 1, num_kernel]
             conv_len = relu.get_shape()[1]
             pool = tf.nn.max_pool(relu, ksize=[1,conv_len,1,1], strides=[1,1,1,1], padding='VALID')
@@ -46,6 +51,7 @@ def inference(sentences, keep_prob):
             pool = tf.squeeze(pool,squeeze_dims=[1,2]) # size: [batch_size, num_kernel]
             pool_tensors.append(pool)
         pool_layer = tf.concat(concat_dim=1, values=pool_tensors, name='pool')
+        _activation_summary(pool_layer, name=pool_layer.name)
 
     # drop out layer
     pool_dropout = tf.nn.dropout(pool_layer, keep_prob)
@@ -57,6 +63,7 @@ def inference(sentences, keep_prob):
             initializer=tf.truncated_normal_initializer(stddev=0.01))
         biases = _variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.0))
         logits = tf.nn.softmax(tf.add(tf.matmul(pool_dropout, W), biases), name=scope.name)
+        _activation_summary(logits, name='softmax')
 
     return logits
 
@@ -67,7 +74,18 @@ def loss(logits, labels):
     return cross_entropy_loss
 
 def train_batch(loss, global_step, lr):
-    # TODO: add summary code
     opt = tf.train.GradientDescentOptimizer(lr)
-    train_op = opt.minimize(loss, global_step=global_step)
+    grads = opt.compute_gradients(loss)
+    train_op = opt.apply_gradients(grads, global_step=global_step)
+
+    # add summary for loss, variables and gradients
+    tf.scalar_summary(loss.name, loss)
+
+    for var in tf.trainable_variables():
+        tf.histogram_summary(var.op.name, var)
+
+    for grad, var in grads:
+        if grad:
+            tf.histogram_summary(var.op.name + '/gradients', grad)
+
     return train_op

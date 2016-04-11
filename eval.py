@@ -29,6 +29,7 @@ def evaluate():
         x, y = text_input.load_data_from_dump(FLAGS.data_dir, 'test.cPickle')
         loader = text_input.DataLoader(x, y, batch_size=FLAGS.batch_size)
         num_batches = loader.batches_per_epoch()
+        print 'Start evaluation, %d batches needed, with %d examples per batch.' % (num_batches, FLAGS.batch_size)
 
         true_count_total = 0
 

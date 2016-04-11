@@ -13,13 +13,12 @@ tf.app.flags.DEFINE_string('data_dir', './data/mr/', 'Directory of the data')
 tf.app.flags.DEFINE_string('train_dir', './train/', 'Directory to save training checkpoint files')
 tf.app.flags.DEFINE_integer('max_steps', 10000, 'Max number of steps to run')
 tf.app.flags.DEFINE_boolean('log_device_placement', False, 'Whether log device information in summary')
-# tf.app.flags.DEFINE_boolean('initial_lr', False, 'Whether log device information in summary')
 
 LOG_STEP_INTERVAL = 10
-SUMMARY_STEP_INTERVAL = 50
-SAVE_STEP_INTERVAL = 100
+SUMMARY_STEP_INTERVAL = 100
+SAVE_STEP_INTERVAL = 1000
 
-INITIAL_LR = 0.2
+INITIAL_LR = 0.4
 LR_DECAY_RATE = 0.9
 MAX_STEP_LOSS_UNCHANGED = 200
 TRAIN_DROPOUT_RATE = 0.5
@@ -37,13 +36,13 @@ def train():
         loss = model.loss(logits, labels)
         train_op = model.train_batch(loss, global_step, lr)
 
-        # create a saver
+        # create a saver and summary
         saver = tf.train.Saver(tf.all_variables())
-
-        # TODO: create summary writer
+        summary_op = tf.merge_all_summaries()
 
         sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.log_device_placement))
         sess.run(tf.initialize_all_variables())
+        summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, graph_def=sess.graph_def)
 
         current_lr = INITIAL_LR
         lowest_loss_value = float("inf")
@@ -58,8 +57,8 @@ def train():
         for step in xrange(FLAGS.max_steps):
             start_time = time.time()
             x_batch, y_batch = loader.next_batch()
-            _, loss_value = sess.run([train_op, loss], feed_dict={sentences: x_batch, labels: y_batch, 
-                lr: current_lr, keep_prob: TRAIN_DROPOUT_RATE})
+            dict_to_feed = {sentences: x_batch, labels: y_batch, lr: current_lr, keep_prob: TRAIN_DROPOUT_RATE}
+            _, loss_value = sess.run([train_op, loss], feed_dict=dict_to_feed)
             duration = time.time() - start_time
 
             assert not np.isnan(loss_value), "Model loss is NaN."
@@ -71,6 +70,10 @@ def train():
                 format_str = ('%s: step %d/%d, loss = %.2f (%.1f examples/sec; %.3f sec/batch), lr: %.5f')
                 print (format_str % (datetime.now(), step, FLAGS.max_steps, loss_value, examples_per_sec, 
                     sec_per_batch, current_lr))
+
+            if step % SUMMARY_STEP_INTERVAL == 0:
+                summary_str = sess.run(summary_op, feed_dict=dict_to_feed)
+                summary_writer.add_summary(summary_str, step)
 
             if step % SAVE_STEP_INTERVAL == 0:
                 ckpt_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
