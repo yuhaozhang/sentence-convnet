@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 import random
 from collections import Counter
 import cPickle as pickle
@@ -7,7 +8,7 @@ import numpy as np
 
 UNK_TOKEN = '<unk>'
 PAD_TOKEN = '<pad>'
-RANDOM_SEED = 123
+RANDOM_SEED = 1234
 
 class TextReader(object):
 
@@ -34,18 +35,43 @@ class TextReader(object):
         self.data_files = data_files
         return data_files
 
+    def clean_str(self, string):
+        """
+        Tokenization/string cleaning.
+        """
+        string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)     
+        string = re.sub(r"\'s", " \'s", string) 
+        string = re.sub(r"\'ve", " \'ve", string) 
+        string = re.sub(r"n\'t", " n\'t", string) 
+        string = re.sub(r"\'re", " \'re", string) 
+        string = re.sub(r"\'d", " \'d", string) 
+        string = re.sub(r"\'ll", " \'ll", string) 
+        string = re.sub(r",", " , ", string) 
+        string = re.sub(r"!", " ! ", string) 
+        string = re.sub(r"\(", " \( ", string) 
+        string = re.sub(r"\)", " \) ", string) 
+        string = re.sub(r"\?", " \? ", string) 
+        string = re.sub(r"\s{2,}", " ", string)    
+        return string.strip().lower()
+
     def prepare_dict(self, vocab_size=10000):
         max_sent_len = 0
         c = Counter()
         data_files = self.get_filenames()
+        # store the preprocessed raw text to avoid cleaning it again
+        self.raw_text = []
         for f in data_files:
+            strings = []
             with open(f, 'r') as infile:
                 for line in infile:
-                    toks = line.strip().split()
+                    clean_string = self.clean_str(line)
+                    strings.append(clean_string)
+                    toks = clean_string.split()
                     if len(toks) > max_sent_len:
                         max_sent_len = len(toks)
                     for t in toks:
                         c[t] += 1
+            self.raw_text.append(strings)
         total_words = len(c)
         assert total_words >= vocab_size
         word_list = [p[0] for p in c.most_common(vocab_size - 2)]
@@ -64,19 +90,18 @@ class TextReader(object):
     def generate_index_data(self, max_sent_len=100):
         self.max_sent_len = max_sent_len
         sentence_and_label_pairs = []
-        for label, f in enumerate(self.data_files):
-            with open(f, 'r') as infile:
-                for line in infile:
-                    toks = line.strip().split()
-                    toks_len = len(toks)
-                    if toks_len <= max_sent_len:
-                        pad_left = (max_sent_len - toks_len) / 2
-                        pad_right = int(np.ceil((max_sent_len - toks_len) / 2.0))
-                    else:
-                        continue
-                    toks_idx = [1 for i in range(pad_left)] + [self.word2idx[t] if t in self.word2idx else 0 for t in toks] + \
-                        [1 for i in range(pad_right)]
-                    sentence_and_label_pairs.append((toks_idx, label))
+        for label, strings in enumerate(self.raw_text):
+            for s in strings:
+                toks = s.split()
+                toks_len = len(toks)
+                if toks_len <= max_sent_len:
+                    pad_left = (max_sent_len - toks_len) / 2
+                    pad_right = int(np.ceil((max_sent_len - toks_len) / 2.0))
+                else:
+                    continue
+                toks_idx = [1 for i in range(pad_left)] + [self.word2idx[t] if t in self.word2idx else 0 for t in toks] + \
+                    [1 for i in range(pad_right)]
+                sentence_and_label_pairs.append((toks_idx, label))
         return sentence_and_label_pairs
 
     def shuffle_and_split(self, sentence_and_label_pairs, test_fraction=0.2):

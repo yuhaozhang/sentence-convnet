@@ -2,14 +2,14 @@ import tensorflow as tf
 
 FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_integer('batch_size', 100, 'Training batch size')
+tf.app.flags.DEFINE_integer('batch_size', 50, 'Training batch size')
 tf.app.flags.DEFINE_integer('emb_size', 300, 'Size of word embeddings')
 tf.app.flags.DEFINE_integer('num_kernel', 100, 'Number of filters for each window size')
 tf.app.flags.DEFINE_integer('min_window', 3, 'Minimum size of filter window')
 tf.app.flags.DEFINE_integer('max_window', 5, 'Maximum size of filter window')
-tf.app.flags.DEFINE_integer('vocab_size', 18000, 'Vocabulary size')
+tf.app.flags.DEFINE_integer('vocab_size', 15000, 'Vocabulary size')
 tf.app.flags.DEFINE_integer('num_class', 2, 'Number of class to consider')
-tf.app.flags.DEFINE_integer('sent_len', 59, 'Input sentence length. This is after the padding is performed.')
+tf.app.flags.DEFINE_integer('sent_len', 56, 'Input sentence length. This is after the padding is performed.')
 
 def _variable_on_cpu(name, shape, initializer):
     with tf.device('/cpu:0'):
@@ -62,7 +62,6 @@ def inference(sentences, keep_prob):
             initializer=tf.truncated_normal_initializer(stddev=0.05))
         biases = _variable_on_cpu('biases', [FLAGS.num_class], tf.constant_initializer(0.01))
         logits = tf.nn.bias_add(tf.matmul(pool_dropout, W), biases)
-        _activation_summary(logits, name='logits')
 
     return logits
 
@@ -73,7 +72,7 @@ def loss(logits, labels):
     return cross_entropy_loss
 
 def train_batch(loss, lr):
-    opt = tf.train.AdamOptimizer(lr)
+    opt = tf.train.AdadeltaOptimizer(lr)
     grads = opt.compute_gradients(loss)
     train_op = opt.apply_gradients(grads)
 

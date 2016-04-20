@@ -11,16 +11,17 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('data_dir', './data/mr/', 'Directory of the data')
 tf.app.flags.DEFINE_string('train_dir', './train/', 'Directory to save training checkpoint files')
-tf.app.flags.DEFINE_integer('num_epoch', 60, 'Number of epochs to run')
+tf.app.flags.DEFINE_integer('num_epoch', 30, 'Number of epochs to run')
 tf.app.flags.DEFINE_boolean('log_device_placement', False, 'Whether log device information in summary')
-tf.app.flags.DEFINE_float('init_lr', 0.01, 'Initial learning rate')
-tf.app.flags.DEFINE_float('lr_decay', 0.9, 'LR decay rate')
-tf.app.flags.DEFINE_integer('tolerance_step', 150, 'Decay the lr after loss remains unchanged for this number of steps')
+# I don't know why I need to set initial lr so large here, but empirically it works pretty well
+tf.app.flags.DEFINE_float('init_lr', 10000, 'Initial learning rate')
+tf.app.flags.DEFINE_float('lr_decay', 0.95, 'LR decay rate')
+tf.app.flags.DEFINE_integer('tolerance_step', 400, 'Decay the lr after loss remains unchanged for this number of steps')
 tf.app.flags.DEFINE_float('dropout', 0.5, 'Dropout rate. 0 is no dropout.')
 tf.app.flags.DEFINE_integer('log_step', 10, 'Write log to stdout after this step')
-tf.app.flags.DEFINE_integer('summary_step', 100, 'Write summary after this step')
+tf.app.flags.DEFINE_integer('summary_step', 200, 'Write summary after this step')
 tf.app.flags.DEFINE_integer('save_epoch', 5, 'Save model after this epoch')
-tf.app.flags.DEFINE_float('test_fraction', 0.15, 'Test set fraction')
+tf.app.flags.DEFINE_float('test_fraction', 0.1, 'Test set fraction')
 
 def train():
     with tf.Graph().as_default():
@@ -116,15 +117,15 @@ def train():
             # summary loss/accuracy after each epoch
             train_loss /= train_loader.num_batch
             train_accuracy = true_count_total * 1.0 / (train_loader.num_batch * FLAGS.batch_size)
-            summary_writer.add_summary(_summary_for_scalar('training_loss', train_loss), global_step=epoch)
-            summary_writer.add_summary(_summary_for_scalar('training_accuracy', train_accuracy), global_step=epoch)
+            summary_writer.add_summary(_summary_for_scalar('eval/training_loss', train_loss), global_step=epoch)
+            summary_writer.add_summary(_summary_for_scalar('eval/training_accuracy', train_accuracy), global_step=epoch)
 
             test_loss, test_accuracy = eval_once(sess, test_loader)
-            summary_writer.add_summary(_summary_for_scalar('test_loss', test_loss), global_step=epoch)
-            summary_writer.add_summary(_summary_for_scalar('test_accuracy', test_accuracy), global_step=epoch)
+            summary_writer.add_summary(_summary_for_scalar('eval/test_loss', test_loss), global_step=epoch)
+            summary_writer.add_summary(_summary_for_scalar('eval/test_accuracy', test_accuracy), global_step=epoch)
 
-            print("Epoch %d: training_loss = %.2f, training_accuracy = %.2f" % (epoch+1, train_loss, train_accuracy))
-            print("Epoch %d: test_loss = %.2f, test_accuracy = %.2f" % (epoch+1, test_loss, test_accuracy))
+            print("Epoch %d: training_loss = %.6f, training_accuracy = %.3f" % (epoch+1, train_loss, train_accuracy))
+            print("Epoch %d: test_loss = %.6f, test_accuracy = %.3f" % (epoch+1, test_loss, test_accuracy))
 
             # save after fixed epoch
             if epoch % FLAGS.save_epoch == 0:
