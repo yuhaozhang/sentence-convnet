@@ -7,6 +7,7 @@ import numpy as np
 
 UNK_TOKEN = '<unk>'
 PAD_TOKEN = '<pad>'
+RANDOM_SEED = 123
 
 class TextReader(object):
 
@@ -79,13 +80,14 @@ class TextReader(object):
         return sentences_and_labels
 
     def shuffle_and_split(self, sentences_and_labels, test_fraction=0.2):
+        random.seed(RANDOM_SEED)
         random.shuffle(sentences_and_labels)
         self.num_examples = len(sentences_and_labels)
         test_num = int(self.num_examples * test_fraction)
         self.test_data = sentences_and_labels[:test_num]
         self.train_data = sentences_and_labels[test_num:]
-        dump_data(self.data_dir, 'train.cPickle', self.train_data)
-        dump_data(self.data_dir, 'test.cPickle', self.test_data)
+        dump_to_file(self.data_dir, 'train.cPickle', self.train_data)
+        dump_to_file(self.data_dir, 'test.cPickle', self.test_data)
         print 'Split dataset into training and test set: %d for training, %d for testing.' % \
             (self.num_examples - test_num, test_num)
         return
@@ -126,13 +128,13 @@ class DataLoader(object):
         return int(np.ceil(self.num_examples / self.batch_size))
 
 
-def dump_data(data_dir, filename, data):
+def dump_to_file(data_dir, filename, obj):
     dump_file = os.path.join(data_dir, filename)
     with open(dump_file, 'w') as outfile:
-        pickle.dump(data, file=outfile)
+        pickle.dump(obj, file=outfile)
     return
 
-def load_data_from_dump(data_dir, filename):
+def load_from_dump(data_dir, filename):
     dump_file = os.path.join(data_dir, filename)
     with open(dump_file, 'r') as infile:
         data = pickle.load(infile)

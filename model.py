@@ -8,9 +8,8 @@ tf.app.flags.DEFINE_integer('num_kernel', 100, 'Number of filters for each windo
 tf.app.flags.DEFINE_integer('min_window', 3, 'Minimum size of filter window')
 tf.app.flags.DEFINE_integer('max_window', 5, 'Maximum size of filter window')
 tf.app.flags.DEFINE_integer('vocab_size', 18000, 'Vocabulary size')
-
-NUM_CLASSES = 2
-SENT_LENGTH = 59
+tf.app.flags.DEFINE_integer('num_class', 2, 'Number of class to consider')
+tf.app.flags.DEFINE_integer('sent_len', 59, 'Input sentence length. This is after the padding is performed.')
 
 def _variable_on_cpu(name, shape, initializer):
     with tf.device('/cpu:0'):
@@ -41,7 +40,7 @@ def inference(sentences, keep_prob):
             kernel = _variable_on_cpu(name='kernel_'+str(k_size),
                 shape=[k_size, FLAGS.emb_size, 1, FLAGS.num_kernel], initializer=tf.truncated_normal_initializer(stddev=0.01))
             conv = tf.nn.conv2d(input=sent_batch, filter=kernel, strides=[1,1,1,1], padding='VALID')
-            biases = _variable_on_cpu('biases'+str(k_size), [FLAGS.num_kernel], tf.constant_initializer(0.0))
+            biases = _variable_on_cpu('biases_'+str(k_size), [FLAGS.num_kernel], tf.constant_initializer(0.0))
             bias = tf.nn.bias_add(conv, biases)
             relu = tf.nn.relu(bias, name=scope.name)
             # shape of relu: [batch_size, conv_len, 1, num_kernel]
@@ -59,11 +58,11 @@ def inference(sentences, keep_prob):
     # fully-connected layer
     pool_size = (FLAGS.max_window - FLAGS.min_window + 1) * FLAGS.num_kernel
     with tf.variable_scope('fc') as scope:
-        W = _variable_on_cpu('W', shape=[pool_size, NUM_CLASSES],
-            initializer=tf.truncated_normal_initializer(stddev=0.01))
-        biases = _variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.0))
-        logits = tf.nn.softmax(tf.add(tf.matmul(pool_dropout, W), biases), name=scope.name)
-        _activation_summary(logits, name='softmax')
+        W = _variable_on_cpu('W', shape=[pool_size, FLAGS.num_class],
+            initializer=tf.truncated_normal_initializer(stddev=0.05))
+        biases = _variable_on_cpu('biases', [FLAGS.num_class], tf.constant_initializer(0.01))
+        logits = tf.nn.bias_add(tf.matmul(pool_dropout, W), biases)
+        _activation_summary(logits, name='logits')
 
     return logits
 
@@ -74,7 +73,7 @@ def loss(logits, labels):
     return cross_entropy_loss
 
 def train_batch(loss, global_step, lr):
-    opt = tf.train.GradientDescentOptimizer(lr)
+    opt = tf.train.AdamOptimizer(lr)
     grads = opt.compute_gradients(loss)
     train_op = opt.apply_gradients(grads, global_step=global_step)
 
@@ -85,7 +84,7 @@ def train_batch(loss, global_step, lr):
         tf.histogram_summary(var.op.name, var)
 
     for grad, var in grads:
-        if grad:
+        if grad is not None:
             tf.histogram_summary(var.op.name + '/gradients', grad)
 
     return train_op
