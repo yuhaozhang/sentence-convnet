@@ -63,7 +63,7 @@ class TextReader(object):
 
     def generate_index_data(self, max_sent_len=100):
         self.max_sent_len = max_sent_len
-        sentences_and_labels = []
+        sentence_and_label_pairs = []
         for label, f in enumerate(self.data_files):
             with open(f, 'r') as infile:
                 for line in infile:
@@ -76,83 +76,69 @@ class TextReader(object):
                         continue
                     toks_idx = [1 for i in range(pad_left)] + [self.word2idx[t] if t in self.word2idx else 0 for t in toks] + \
                         [1 for i in range(pad_right)]
-                    sentences_and_labels.append((toks_idx, label))
-        return sentences_and_labels
+                    sentence_and_label_pairs.append((toks_idx, label))
+        return sentence_and_label_pairs
 
-    def shuffle_and_split(self, sentences_and_labels, test_fraction=0.2):
+    def shuffle_and_split(self, sentence_and_label_pairs, test_fraction=0.2):
         random.seed(RANDOM_SEED)
-        random.shuffle(sentences_and_labels)
-        self.num_examples = len(sentences_and_labels)
+        random.shuffle(sentence_and_label_pairs)
+        self.num_examples = len(sentence_and_label_pairs)
+        sentences, labels = zip(*sentence_and_label_pairs)
         test_num = int(self.num_examples * test_fraction)
-        self.test_data = sentences_and_labels[:test_num]
-        self.train_data = sentences_and_labels[test_num:]
-        dump_to_file(self.data_dir, 'train.cPickle', self.train_data)
-        dump_to_file(self.data_dir, 'test.cPickle', self.test_data)
+        self.test_data = (sentences[:test_num], labels[:test_num])
+        self.train_data = (sentences[test_num:], labels[test_num:])
+        dump_to_file(os.path.join(self.data_dir, 'train.cPickle'), self.train_data)
+        dump_to_file(os.path.join(self.data_dir, 'test.cPickle'), self.test_data)
         print 'Split dataset into training and test set: %d for training, %d for testing.' % \
             (self.num_examples - test_num, test_num)
         return
 
     def prepare_data(self, vocab_size=10000, test_fraction=0.2):
         max_sent_lent = self.prepare_dict(vocab_size)
-        sentences_and_labels = self.generate_index_data(max_sent_lent)
-        self.shuffle_and_split(sentences_and_labels, test_fraction)
+        sentence_and_label_pairs = self.generate_index_data(max_sent_lent)
+        self.shuffle_and_split(sentence_and_label_pairs, test_fraction)
         return
-
-    def get_data_and_labels(self, test=False):
-        if test:
-            return zip(*self.test_data)
-        return zip(*self.train_data)
-
 
 class DataLoader(object):
 
-    def __init__(self, x, y, batch_size=50):
-        assert len(x) == len(y)
-        self.x = x
-        self.y = y
+    def __init__(self, filename, batch_size=50):
+        self._x, self._y = load_from_dump(filename)
+        assert len(self._x) == len(self._y)
+        self._pointer = 0
+        self._num_examples = len(self._x)
+
         self.batch_size = batch_size
-        self.cur_idx = 0
-        self.num_examples = len(x)
-        print 'Loaded data with %d examples. %d examples per batch will be used.' % (self.num_examples, self.batch_size)
+        self.num_batch = int(np.ceil(self._num_examples / self.batch_size))
+        print 'Loaded data with %d examples. %d examples per batch will be used.' % (self._num_examples, self.batch_size)
 
     def next_batch(self):
-        if self.batch_size + self.cur_idx >= self.num_examples:
-            batch_x, batch_y = self.x[self.cur_idx:], self.y[self.cur_idx:]
-            self.cur_idx = (self.cur_idx + self.batch_size) % self.num_examples
-            return (batch_x + self.x[:self.cur_idx], batch_y + self.y[:self.cur_idx])
-        self.cur_idx += self.batch_size
-        return (self.x[self.cur_idx-self.batch_size:self.cur_idx], 
-            self.y[self.cur_idx-self.batch_size:self.cur_idx])
-
-    def batches_per_epoch(self):
-        return int(np.ceil(self.num_examples / self.batch_size))
+        # reset pointer
+        if self.batch_size + self._pointer >= self._num_examples:
+            batch_x, batch_y = self._x[self._pointer:], self._y[self._pointer:]
+            self._pointer = (self._pointer + self.batch_size) % self._num_examples
+            return (batch_x + self._x[:self._pointer], batch_y + self._y[:self._pointer])
+        self._pointer += self.batch_size
+        return (self._x[self._pointer-self.batch_size:self._pointer], 
+            self._y[self._pointer-self.batch_size:self._pointer])
 
 
-def dump_to_file(data_dir, filename, obj):
-    dump_file = os.path.join(data_dir, filename)
-    with open(dump_file, 'w') as outfile:
+def dump_to_file(filename, obj):
+    with open(filename, 'w') as outfile:
         pickle.dump(obj, file=outfile)
     return
 
-def load_from_dump(data_dir, filename):
-    dump_file = os.path.join(data_dir, filename)
-    with open(dump_file, 'r') as infile:
-        data = pickle.load(infile)
-    return zip(*data)
+def load_from_dump(filename):
+    with open(filename, 'r') as infile:
+        obj = pickle.load(infile)
+    return obj
 
 
-def main():
+def test():
     reader = TextReader('./data/mr/', suffix_list=['neg', 'pos'])
     reader.prepare_data()
     print len(reader.train_data)
     print reader.train_data[0]
     print reader.max_sent_len
-    x, y = reader.get_data_and_labels()
-    loader = DataLoader(x, y, batch_size=1000)
-    print 'Num examples: %d' % loader.num_examples
-    for i in range(10):
-        x,y = loader.next_batch()
-        print 'Loader generates %d examples, current index at %d' % (len(x), loader.cur_idx)
 
 if __name__ == '__main__':
-    main()
+    test()

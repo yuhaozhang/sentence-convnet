@@ -11,21 +11,20 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('data_dir', './data/mr/', 'Directory of the data')
 tf.app.flags.DEFINE_string('train_dir', './train/', 'Directory to save training checkpoint files')
-tf.app.flags.DEFINE_integer('max_steps', 10000, 'Max number of steps to run')
+tf.app.flags.DEFINE_integer('num_epoch', 60, 'Number of epochs to run')
 tf.app.flags.DEFINE_boolean('log_device_placement', False, 'Whether log device information in summary')
 tf.app.flags.DEFINE_float('init_lr', 0.01, 'Initial learning rate')
 tf.app.flags.DEFINE_float('lr_decay', 0.9, 'LR decay rate')
-tf.app.flags.DEFINE_integer('tolerance_step', 200, 'Decay the lr after loss remains unchanged for this number of steps')
+tf.app.flags.DEFINE_integer('tolerance_step', 150, 'Decay the lr after loss remains unchanged for this number of steps')
 tf.app.flags.DEFINE_float('dropout', 0.5, 'Dropout rate. 0 is no dropout.')
 tf.app.flags.DEFINE_integer('log_step', 10, 'Write log to stdout after this step')
 tf.app.flags.DEFINE_integer('summary_step', 100, 'Write summary after this step')
-tf.app.flags.DEFINE_integer('save_step', 1000, 'Save model after this step')
+tf.app.flags.DEFINE_integer('save_epoch', 5, 'Save model after this epoch')
 tf.app.flags.DEFINE_float('test_fraction', 0.15, 'Test set fraction')
 
 def train():
     with tf.Graph().as_default():
-        global_step = tf.Variable(0, trainable=False)
-
+        # build graph
         sentences = tf.placeholder(dtype=tf.int64, shape=[FLAGS.batch_size, FLAGS.sent_len], name='input_x')
         labels = tf.placeholder(dtype=tf.int64, shape=[FLAGS.batch_size], name='input_y')
         lr = tf.placeholder(dtype=tf.float32, shape=[], name='learning_rate')
@@ -33,7 +32,10 @@ def train():
 
         logits = model.inference(sentences, keep_prob)
         loss = model.loss(logits, labels)
-        train_op = model.train_batch(loss, global_step, lr)
+        train_op = model.train_batch(loss, lr)
+
+        correct_prediction = tf.to_int32(tf.nn.in_top_k(logits, labels, 1))
+        true_count_op = tf.reduce_sum(correct_prediction)
 
         # create a saver and summary
         saver = tf.train.Saver(tf.all_variables())
@@ -51,47 +53,86 @@ def train():
         # loading data
         reader = text_input.TextReader(FLAGS.data_dir, suffix_list=['neg', 'pos'])
         reader.prepare_data(vocab_size=FLAGS.vocab_size, test_fraction=FLAGS.test_fraction)
-        x, y = reader.get_data_and_labels()
-        loader = text_input.DataLoader(x, y, batch_size=FLAGS.batch_size)
+        train_loader = text_input.DataLoader(os.path.join(FLAGS.data_dir, 'train.cPickle'), batch_size=FLAGS.batch_size)
+        test_loader = text_input.DataLoader(os.path.join(FLAGS.data_dir, 'test.cPickle'), batch_size=FLAGS.batch_size)
+        max_steps = train_loader.num_batch * FLAGS.num_epoch # this is just an estimated number
+        global_step = 0
 
-        for step in xrange(FLAGS.max_steps):
-            start_time = time.time()
-            x_batch, y_batch = loader.next_batch()
-            dict_to_feed = {sentences: x_batch, labels: y_batch, lr: current_lr, keep_prob: (1.-FLAGS.dropout)}
-            _, loss_value = sess.run([train_op, loss], feed_dict=dict_to_feed)
-            duration = time.time() - start_time
+        def eval_once(sess, loader):
+            test_loss = 0.0
+            test_accuracy = 0
+            for _ in xrange(loader.num_batch):
+                x_batch, y_batch = loader.next_batch()
+                feed = {sentences: x_batch, labels: y_batch, keep_prob: 1.}
+                loss_value, true_count_value = sess.run([loss, true_count_op], feed_dict=feed)
+                test_loss += loss_value
+                test_accuracy += true_count_value
+            test_loss /= loader.num_batch
+            test_accuracy /= (1.0 * loader.num_batch * FLAGS.batch_size)
+            return (test_loss, test_accuracy)
 
-            assert not np.isnan(loss_value), "Model loss is NaN."
+        # Note that this is a soft version of epoch.
+        for epoch in xrange(FLAGS.num_epoch):
+            train_loss = 0.0
+            true_count_total = 0
+            for _ in xrange(train_loader.num_batch):
+                global_step += 1
+                start_time = time.time()
+                x_batch, y_batch = train_loader.next_batch()
+                feed = {sentences: x_batch, labels: y_batch, lr: current_lr, keep_prob: (1.-FLAGS.dropout)}
+                _, loss_value, true_count_value = sess.run([train_op, loss, true_count_op], feed_dict=feed)
+                duration = time.time() - start_time
+                train_loss += loss_value
+                true_count_total += true_count_value
 
-            if step % FLAGS.log_step == 0:
-                examples_per_sec = FLAGS.batch_size / duration
-                sec_per_batch = float(duration)
+                assert not np.isnan(loss_value), "Model loss is NaN."
 
-                format_str = ('%s: step %d/%d, loss = %.6f (%.1f examples/sec; %.3f sec/batch), lr: %.6f')
-                print (format_str % (datetime.now(), step, FLAGS.max_steps, loss_value, examples_per_sec, 
-                    sec_per_batch, current_lr))
+                if global_step % FLAGS.log_step == 0:
+                    examples_per_sec = FLAGS.batch_size / duration
 
-            if step % FLAGS.summary_step == 0:
-                summary_str = sess.run(summary_op, feed_dict=dict_to_feed)
-                summary_writer.add_summary(summary_str, step)
+                    format_str = ('%s: step %d/%d (epoch %d/%d), loss = %.6f (%.1f examples/sec; %.3f sec/batch), lr: %.6f')
+                    print (format_str % (datetime.now(), global_step, max_steps, epoch+1, FLAGS.num_epoch, loss_value, 
+                        examples_per_sec, duration, current_lr))
 
-            if step % FLAGS.save_step == 0:
-                saver.save(sess, save_path, global_step=step)
+                if global_step % FLAGS.summary_step == 0:
+                    summary_str = sess.run(summary_op, feed_dict=feed)
+                    summary_writer.add_summary(summary_str, global_step)
 
-            # decay learning rate if necessary
-            if loss_value < lowest_loss_value:
-                lowest_loss_value = loss_value
-                step_loss_ascend = 0
-            else:
-                step_loss_ascend += 1
-            if step_loss_ascend >= FLAGS.tolerance_step:
-                current_lr *= FLAGS.lr_decay
-                print '%s: step %d/%d, LR decays to %.5f' % ((datetime.now(), step, FLAGS.max_steps, current_lr))
-                step_loss_ascend = 0
+                # decay learning rate if necessary
+                if loss_value < lowest_loss_value:
+                    lowest_loss_value = loss_value
+                    step_loss_ascend = 0
+                else:
+                    step_loss_ascend += 1
+                if step_loss_ascend >= FLAGS.tolerance_step:
+                    current_lr *= FLAGS.lr_decay
+                    print '%s: step %d/%d (epoch %d/%d), LR decays to %.5f' % ((datetime.now(), global_step, max_steps, 
+                        epoch+1, FLAGS.num_epoch, current_lr))
+                    step_loss_ascend = 0
 
-            # stop learning if learning rate is too low
-            if current_lr < 1e-5: break
-        saver.save(sess, save_path, global_step=step)
+                # stop learning if learning rate is too low
+                if current_lr < 1e-5: break
+
+            # summary loss/accuracy after each epoch
+            train_loss /= train_loader.num_batch
+            train_accuracy = true_count_total * 1.0 / (train_loader.num_batch * FLAGS.batch_size)
+            summary_writer.add_summary(_summary_for_scalar('training_loss', train_loss), global_step=epoch)
+            summary_writer.add_summary(_summary_for_scalar('training_accuracy', train_accuracy), global_step=epoch)
+
+            test_loss, test_accuracy = eval_once(sess, test_loader)
+            summary_writer.add_summary(_summary_for_scalar('test_loss', test_loss), global_step=epoch)
+            summary_writer.add_summary(_summary_for_scalar('test_accuracy', test_accuracy), global_step=epoch)
+
+            print("Epoch %d: training_loss = %.2f, training_accuracy = %.2f" % (epoch+1, train_loss, train_accuracy))
+            print("Epoch %d: test_loss = %.2f, test_accuracy = %.2f" % (epoch+1, test_loss, test_accuracy))
+
+            # save after fixed epoch
+            if epoch % FLAGS.save_epoch == 0:
+                    saver.save(sess, save_path, global_step=epoch)
+        saver.save(sess, save_path, global_step=epoch)
+
+def _summary_for_scalar(name, value):
+    return tf.Summary(value=[tf.Summary.Value(tag=name, simple_value=value)])
 
 def main(argv=None):
     if tf.gfile.Exists(FLAGS.train_dir):

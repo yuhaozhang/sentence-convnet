@@ -72,13 +72,10 @@ def loss(logits, labels):
     cross_entropy_loss = tf.reduce_mean(cross_entropy, name='cross_entropy_loss')
     return cross_entropy_loss
 
-def train_batch(loss, global_step, lr):
+def train_batch(loss, lr):
     opt = tf.train.AdamOptimizer(lr)
     grads = opt.compute_gradients(loss)
-    train_op = opt.apply_gradients(grads, global_step=global_step)
-
-    # add summary for loss, variables and gradients
-    tf.scalar_summary(loss.name, loss)
+    train_op = opt.apply_gradients(grads)
 
     for var in tf.trainable_variables():
         tf.histogram_summary(var.op.name, var)
