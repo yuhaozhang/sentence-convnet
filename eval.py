@@ -16,15 +16,8 @@ tf.app.flags.DEFINE_boolean('train_data', False, 'To evaluate on training data')
 def evaluate():
     """ Build evaluation graph and run. """
     with tf.Graph().as_default():
-        sentences = tf.placeholder(dtype=tf.int64, shape=[FLAGS.batch_size, FLAGS.sent_len], name='input_x')
-        labels = tf.placeholder(dtype=tf.int64, shape=[FLAGS.batch_size], name='input_y')
-        keep_prob = tf.placeholder(dtype=tf.float32, shape=[], name='keep_prob')
-
-        logits, W_emb = model.inference(sentences, keep_prob)
-        correct_prediction = tf.to_int32(tf.nn.in_top_k(logits, labels, 1))
-        true_count_op = tf.reduce_sum(correct_prediction)
-        loss = model.loss(logits, labels)
-
+        with tf.variable_scope('cnn'):
+            m = model.Model(FLAGS, is_train=False)
         saver = tf.train.Saver(tf.all_variables())
 
         # read test files
@@ -46,7 +39,8 @@ def evaluate():
 
             for _ in range(loader.num_batch):
                 x, y = loader.next_batch()
-                true_count_value, loss_value = sess.run([true_count_op, loss], feed_dict={keep_prob:1.0, sentences:x, labels:y})
+                true_count_value, loss_value = sess.run([m.true_count_op, m.total_loss], 
+                    feed_dict={m.inputs:x, m.labels:y})
                 true_count += true_count_value
                 avg_loss += loss_value
 

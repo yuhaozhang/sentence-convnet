@@ -10,6 +10,7 @@ UNK_TOKEN = '<unk>'
 PAD_TOKEN = '<pad>'
 RANDOM_SEED = 1234
 
+# TODO: I need to clean up this preprocessing script a bit
 class TextReader(object):
 
     def __init__(self, data_dir, num_classes=2, suffix_list=None):
@@ -146,6 +147,9 @@ class DataLoader(object):
         self._pointer += self.batch_size
         return (self._x[self._pointer-self.batch_size:self._pointer], 
             self._y[self._pointer-self.batch_size:self._pointer])
+
+    def reset_pointer(self):
+        self._pointer = 0
 
 
 def dump_to_file(filename, obj):
