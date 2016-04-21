@@ -77,17 +77,18 @@ class TextReader(object):
         word_list = [p[0] for p in c.most_common(vocab_size - 2)]
         word_list.insert(0, PAD_TOKEN)
         word_list.insert(0, UNK_TOKEN)
-        self.word2idx = dict()
+        self.word2freq = c
+        self.word2id = dict()
         vocab_file = os.path.join(self.data_dir, 'vocab')
         with open(vocab_file, 'w') as outfile:
             for idx, w in enumerate(word_list):
-                self.word2idx[w] = idx
+                self.word2id[w] = idx
                 outfile.write(w + '\t' + str(idx) + '\n')
         print '%d words found in training set. Truncate to vocabulary size %d.' % (total_words, vocab_size)
         print 'Dictionary saved to file %s. Max sentence length in data is %d.' % (vocab_file, max_sent_len)
         return max_sent_len
 
-    def generate_index_data(self, max_sent_len=100):
+    def generate_id_data(self, max_sent_len=100):
         self.max_sent_len = max_sent_len
         sentence_and_label_pairs = []
         for label, strings in enumerate(self.raw_text):
@@ -99,12 +100,12 @@ class TextReader(object):
                     pad_right = int(np.ceil((max_sent_len - toks_len) / 2.0))
                 else:
                     continue
-                toks_idx = [1 for i in range(pad_left)] + [self.word2idx[t] if t in self.word2idx else 0 for t in toks] + \
+                toks_ids = [1 for i in range(pad_left)] + [self.word2id[t] if t in self.word2id else 0 for t in toks] + \
                     [1 for i in range(pad_right)]
-                sentence_and_label_pairs.append((toks_idx, label))
+                sentence_and_label_pairs.append((toks_ids, label))
         return sentence_and_label_pairs
 
-    def shuffle_and_split(self, sentence_and_label_pairs, test_fraction=0.2):
+    def shuffle_and_split(self, sentence_and_label_pairs, test_fraction=0.1):
         random.seed(RANDOM_SEED)
         random.shuffle(sentence_and_label_pairs)
         self.num_examples = len(sentence_and_label_pairs)
@@ -118,9 +119,9 @@ class TextReader(object):
             (self.num_examples - test_num, test_num)
         return
 
-    def prepare_data(self, vocab_size=10000, test_fraction=0.2):
+    def prepare_data(self, vocab_size=10000, test_fraction=0.1):
         max_sent_lent = self.prepare_dict(vocab_size)
-        sentence_and_label_pairs = self.generate_index_data(max_sent_lent)
+        sentence_and_label_pairs = self.generate_id_data(max_sent_lent)
         self.shuffle_and_split(sentence_and_label_pairs, test_fraction)
         return
 
@@ -148,22 +149,62 @@ class DataLoader(object):
 
 
 def dump_to_file(filename, obj):
-    with open(filename, 'w') as outfile:
+    with open(filename, 'wb') as outfile:
         pickle.dump(obj, file=outfile)
     return
 
 def load_from_dump(filename):
-    with open(filename, 'r') as infile:
+    with open(filename, 'rb') as infile:
         obj = pickle.load(infile)
     return obj
 
+def _load_bin_vec(fname, vocab):
+    """
+    Loads 300x1 word vecs from Google (Mikolov) word2vec
+    """
+    word_vecs = {}
+    with open(fname, "rb") as f:
+        header = f.readline()
+        vocab_size, layer1_size = map(int, header.split())
+        binary_len = np.dtype('float32').itemsize * layer1_size
+        for line in xrange(vocab_size):
+            word = []
+            while True:
+                ch = f.read(1)
+                if ch == ' ':
+                    word = ''.join(word)
+                    break
+                if ch != '\n':
+                    word.append(ch)
+            if word in vocab:
+               word_vecs[word] = np.fromstring(f.read(binary_len), dtype='float32')
+            else:
+                f.read(binary_len)
+    return (word_vecs, layer1_size)
 
-def test():
+def _add_random_vec(word_vecs, vocab, emb_size=300):
+    for word in vocab:
+        if word not in word_vecs:
+            word_vecs[word] = np.random.uniform(-0.25,0.25,emb_size)
+    return word_vecs
+
+def prepare_pretrained_embedding(fname, word2id):
+    print 'Reading pretrained word vectors from file ...'
+    word_vecs, emb_size = _load_bin_vec(fname, word2id)
+    word_vecs = _add_random_vec(word_vecs, word2id, emb_size)
+    embedding = np.zeros([len(word2id), emb_size])
+    for w,idx in word2id.iteritems():
+        embedding[idx,:] = word_vecs[w]
+    print 'Generated embeddings with shape ' + str(embedding.shape)
+    return embedding
+
+def main():
     reader = TextReader('./data/mr/', suffix_list=['neg', 'pos'])
-    reader.prepare_data()
-    print len(reader.train_data)
-    print reader.train_data[0]
-    print reader.max_sent_len
+    reader.prepare_data(vocab_size=15000, test_fraction=0.1)
+    embedding = prepare_pretrained_embedding('./data/word2vec/GoogleNews-vectors-negative300.bin', reader.word2id)
+    # dump_to_file('./data/mr/emb.cPickle', embedding)
+    np.save('./data/mr/emb.npy', embedding)
+
 
 if __name__ == '__main__':
-    test()
+    main()

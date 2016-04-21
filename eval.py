@@ -20,7 +20,7 @@ def evaluate():
         labels = tf.placeholder(dtype=tf.int64, shape=[FLAGS.batch_size], name='input_y')
         keep_prob = tf.placeholder(dtype=tf.float32, shape=[], name='keep_prob')
 
-        logits = model.inference(sentences, keep_prob)
+        logits, W_emb = model.inference(sentences, keep_prob)
         correct_prediction = tf.to_int32(tf.nn.in_top_k(logits, labels, 1))
         true_count_op = tf.reduce_sum(correct_prediction)
         loss = model.loss(logits, labels)

@@ -1,6 +1,7 @@
 from datetime import datetime
 import time
 import os
+import sys
 import tensorflow as tf
 import numpy as np
 
@@ -11,17 +12,16 @@ FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string('data_dir', './data/mr/', 'Directory of the data')
 tf.app.flags.DEFINE_string('train_dir', './train/', 'Directory to save training checkpoint files')
-tf.app.flags.DEFINE_integer('num_epoch', 30, 'Number of epochs to run')
+tf.app.flags.DEFINE_integer('num_epoch', 50, 'Number of epochs to run')
 tf.app.flags.DEFINE_boolean('log_device_placement', False, 'Whether log device information in summary')
 # I don't know why I need to set initial lr so large here, but empirically it works pretty well
-tf.app.flags.DEFINE_float('init_lr', 10000, 'Initial learning rate')
+tf.app.flags.DEFINE_float('init_lr', 0.01, 'Initial learning rate')
 tf.app.flags.DEFINE_float('lr_decay', 0.95, 'LR decay rate')
-tf.app.flags.DEFINE_integer('tolerance_step', 400, 'Decay the lr after loss remains unchanged for this number of steps')
+tf.app.flags.DEFINE_integer('tolerance_step', 500, 'Decay the lr after loss remains unchanged for this number of steps')
 tf.app.flags.DEFINE_float('dropout', 0.5, 'Dropout rate. 0 is no dropout.')
 tf.app.flags.DEFINE_integer('log_step', 10, 'Write log to stdout after this step')
 tf.app.flags.DEFINE_integer('summary_step', 200, 'Write summary after this step')
 tf.app.flags.DEFINE_integer('save_epoch', 5, 'Save model after this epoch')
-tf.app.flags.DEFINE_float('test_fraction', 0.1, 'Test set fraction')
 
 def train():
     with tf.Graph().as_default():
@@ -31,7 +31,7 @@ def train():
         lr = tf.placeholder(dtype=tf.float32, shape=[], name='learning_rate')
         keep_prob = tf.placeholder(dtype=tf.float32, shape=[], name='keep_prob')
 
-        logits = model.inference(sentences, keep_prob)
+        logits, W_emb = model.inference(sentences, keep_prob)
         loss = model.loss(logits, labels)
         train_op = model.train_batch(loss, lr)
 
@@ -45,19 +45,22 @@ def train():
         sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.log_device_placement))
         sess.run(tf.initialize_all_variables())
         summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, graph_def=sess.graph_def)
+        save_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
 
         current_lr = FLAGS.init_lr
         lowest_loss_value = float("inf")
         step_loss_ascend = 0
-        save_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
+        global_step = 0
 
         # loading data
-        reader = text_input.TextReader(FLAGS.data_dir, suffix_list=['neg', 'pos'])
-        reader.prepare_data(vocab_size=FLAGS.vocab_size, test_fraction=FLAGS.test_fraction)
         train_loader = text_input.DataLoader(os.path.join(FLAGS.data_dir, 'train.cPickle'), batch_size=FLAGS.batch_size)
         test_loader = text_input.DataLoader(os.path.join(FLAGS.data_dir, 'test.cPickle'), batch_size=FLAGS.batch_size)
         max_steps = train_loader.num_batch * FLAGS.num_epoch # this is just an estimated number
-        global_step = 0
+
+        # loading pretrained embeddings
+        pretrained_embedding = np.load(os.path.join(FLAGS.data_dir, 'emb.npy'))
+        assign_op = W_emb.assign(pretrained_embedding)
+        sess.run(assign_op)
 
         def eval_once(sess, loader):
             test_loss = 0.0
