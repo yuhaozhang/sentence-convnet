@@ -2,7 +2,7 @@ A Tensorflow implementation of convolutional neural network to classify sentence
 =========
 This implementation uses Tensorflow's `tf.conv2d` to perform 1D convolution on word sequences. It also supports using Google News word2vec pre-trained vectors to initialize word embeddings, which boosts the performance on movie review dataset from ~76% to ~81%.
 
-The original theano implementation of this model by the author is [here](https://github.com/yoonkim/CNN_sentence). Another tensorflow implementation that does not support loading pretrained vectors and is [here](https://github.com/dennybritz/cnn-text-classification-tf).
+The original theano implementation of this model by the author is [here](https://github.com/yoonkim/CNN_sentence). Another tensorflow implementation that does not support loading pretrained vectors is [here](https://github.com/dennybritz/cnn-text-classification-tf).
 
 ## Dependency
 
@@ -18,7 +18,7 @@ The data in `data/mr/` are movie review polarity data provided [here](http://www
 
 #### Preprocess the data
 
-    python text_input.txt
+    python text_input.py
 
 #### Train
 
