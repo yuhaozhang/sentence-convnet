@@ -8,7 +8,7 @@ The original theano implementation of this model by the author is [here](https:/
 
 - python2.7+
 - numpy
-- tensorflow 0.7+
+- tensorflow 1.0+
 
 ## Data
 

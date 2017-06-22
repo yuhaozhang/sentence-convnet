@@ -72,7 +72,7 @@ class Model(object):
                 # shape of pool: [batch_size, 1, 1, num_kernel]
                 pool = tf.squeeze(pool,squeeze_dims=[1,2]) # size: [batch_size, num_kernel]
                 pool_tensors.append(pool)
-            pool_layer = tf.concat(concat_dim=1, values=pool_tensors, name='pool')
+            pool_layer = tf.concat(values=pool_tensors, axis=1, name='pool')
 
         # drop out layer
         if self.is_train and self.dropout > 0:
@@ -90,7 +90,7 @@ class Model(object):
             logits = tf.nn.bias_add(tf.matmul(pool_dropout, W), biases)
 
         # loss
-        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(logits, self._labels, name='cross_entropy_per_example')
+        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self._labels, logits=logits, name='cross_entropy_per_example')
         cross_entropy_loss = tf.reduce_mean(cross_entropy, name='cross_entropy_loss')
         losses.append(cross_entropy_loss)
         self._total_loss = tf.add_n(losses, name='total_loss')
@@ -117,7 +117,7 @@ class Model(object):
             self._train_op = opt.apply_gradients(grads)
 
             for var in tf.trainable_variables():
-                tf.histogram_summary(var.op.name, var)
+                tf.summary.histogram(var.op.name, var)
         else:
             self._train_op = tf.no_op()
             

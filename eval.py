@@ -18,7 +18,7 @@ def evaluate():
     with tf.Graph().as_default():
         with tf.variable_scope('cnn'):
             m = model.Model(FLAGS, is_train=False)
-        saver = tf.train.Saver(tf.all_variables())
+        saver = tf.train.Saver(tf.global_variables())
 
         # read test files
         if FLAGS.train_data:

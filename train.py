@@ -38,13 +38,13 @@ def train():
         with tf.variable_scope('cnn', reuse=True):
             mtest = model.Model(FLAGS, is_train=False)
 
-        saver = tf.train.Saver(tf.all_variables())
+        saver = tf.train.Saver(tf.global_variables())
         save_path = os.path.join(FLAGS.train_dir, 'model.ckpt')
-        summary_op = tf.merge_all_summaries()
+        summary_op = tf.summary.merge_all()
 
         sess = tf.Session(config=tf.ConfigProto(log_device_placement=FLAGS.log_device_placement))
-        summary_writer = tf.train.SummaryWriter(FLAGS.train_dir, graph_def=sess.graph_def)
-        sess.run(tf.initialize_all_variables())
+        summary_writer = tf.summary.FileWriter(FLAGS.train_dir, graph=sess.graph)
+        sess.run(tf.global_variables_initializer())
 
         if FLAGS.use_pretrain:
             print "Use pretrained embeddings to initialize model ..."
